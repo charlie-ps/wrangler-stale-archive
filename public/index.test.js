@@ -9,15 +9,18 @@ function setup() {
   const sent = [];
   const cards = new Map();
   const withdrawn = [];
+  const opened = [];
   const api = {
     send: (f) => sent.push(f),
+    openSession: (id) => opened.push(['session', id]),
+    openTask: (id) => opened.push(['task', id]),
     ui: {
       notify: (c) => new Promise((resolve) => cards.set(c.id, { card: c, resolve })),
       withdraw: (id) => { withdrawn.push(id); cards.get(id)?.resolve(null); cards.delete(id); },
     },
   };
   const answer = async (id, x) => { const c = cards.get(id); cards.delete(id); c.resolve(x); await tick(); };
-  return { sent, cards, withdrawn, answer, n: createNotifier({ api }) };
+  return { sent, opened, cards, withdrawn, answer, n: createNotifier({ api }) };
 }
 
 const item = (kind, id) => ({ kind, id, label: id.toUpperCase(), reason: `${id} is old` });
@@ -60,7 +63,7 @@ test('the card names the item and gives the reason', () => {
   assert.equal(c.id, 'task:t1');
   assert.equal(c.title, 'Archive “Billing”?');
   assert.equal(c.body, 'Quiet for 16 days.');
-  assert.deepEqual(c.actions.map((a) => a.label), ['Keep', 'Archive task']);
+  assert.deepEqual(c.actions.map((a) => a.label), ['Go to', 'Keep', 'Archive task']);
 });
 
 test('a session card names its task', () => {
@@ -70,4 +73,16 @@ test('a session card names its task', () => {
   const loose = cardFor({ kind: 'session', id: 's2', label: 'Loose', task: null, reason: 'Idle.' });
   assert.equal(loose.title, 'Archive “Loose”?');
   assert.equal(loose.body, 'Idle.');
+});
+
+test('Go to opens the task or session without answering, and the card stays down', async () => {
+  const { cards, answer, sent, opened, n } = setup();
+  const items = [item('task', 't'), item('session', 's')];
+  n.onItems(items);
+  await answer('task:t', 'goto');
+  await answer('session:s', 'goto');
+  assert.deepEqual(opened, [['task', 't'], ['session', 's']]);
+  assert.deepEqual(sent, []);
+  n.onItems(items);
+  assert.equal(cards.size, 0);
 });

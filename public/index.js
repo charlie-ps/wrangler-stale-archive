@@ -1,8 +1,9 @@
 // The client half: the server broadcasts the open questions (tasks and sessions
 // gone quiet) about once a minute, and this raises each as a card in the
 // board's notification stack (api.ui.notify), a few at a time, so nothing
-// blocks the board. Archive and Keep go back to the server; × only hides the
-// card until the page is reloaded.
+// blocks the board. Archive and Keep go back to the server; Go to shows the
+// task or session on the board, and × only hides the card until the page is
+// reloaded.
 
 // Cards on screen at once; the rest wait their turn.
 export const MAX_VISIBLE = 3;
@@ -16,6 +17,7 @@ export function cardFor(item) {
     title: `Archive “${item.label}”?`,
     body: item.task ? `In “${item.task}”\n${item.reason}` : item.reason,
     actions: [
+      { id: 'goto', label: 'Go to' },
       { id: 'keep', label: 'Keep' },
       { id: 'archive', label: `Archive ${what}`, primary: true },
     ],
@@ -36,6 +38,9 @@ export function createNotifier({ api }) {
     api.ui.notify(cardFor(item)).then((answer) => {
       if (shown.get(key) !== token) return;
       shown.delete(key);
+      if (answer === 'goto') {
+        if (item.kind === 'task') api.openTask(item.id); else api.openSession(item.id);
+      }
       if (answer === 'archive' || answer === 'keep') {
         api.send({ type: 'stale-archive-answer', kind: item.kind, id: item.id, archive: answer === 'archive' });
       }
