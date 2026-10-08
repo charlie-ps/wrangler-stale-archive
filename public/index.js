@@ -1,54 +1,75 @@
 // The client half: the server broadcasts the open questions (tasks and sessions
-// gone quiet) about once a minute, and this asks them one at a time in the
-// board's own confirm dialog (api.ui.confirm). Only while the tab is visible, so
-// a background tab does not stack up a queue of popups for later.
+// gone quiet) about once a minute, and this raises each as a card in the
+// board's notification stack (api.ui.notify), a few at a time, so nothing
+// blocks the board. Archive and Keep go back to the server; × only hides the
+// card until the page is reloaded.
 
-export function nextQuestion(items, asked) {
-  return (items || []).find((it) => !asked.has(`${it.kind}:${it.id}`)) || null;
-}
+// Cards on screen at once; the rest wait their turn.
+export const MAX_VISIBLE = 3;
 
-export function dialogFor(item) {
+const keyOf = (item) => `${item.kind}:${item.id}`;
+
+export function cardFor(item) {
   const what = item.kind === 'task' ? 'task' : 'session';
   return {
-    title: `Archive this ${what}?`,
-    body: `${item.label}\n\n${item.reason}`,
-    okLabel: `Archive ${what}`,
-    cancelLabel: 'Keep',
+    id: keyOf(item),
+    title: `Archive “${item.label}”?`,
+    body: item.reason,
+    actions: [
+      { id: 'keep', label: 'Keep' },
+      { id: 'archive', label: `Archive ${what}`, primary: true },
+    ],
   };
 }
 
-export function createPrompter({ api, doc = document }) {
+export function createNotifier({ api }) {
   let items = [];
-  let showing = false;
-  // Asked in this tab already: the server's next list may still carry it for a
-  // moment after the answer is sent.
-  const asked = new Set();
+  // key -> token of the card on screen; a resolve whose token is stale was a
+  // withdraw of ours and is ignored.
+  const shown = new Map();
+  const closed = new Set();
 
-  async function maybeAsk() {
-    if (showing || doc.visibilityState === 'hidden') return;
-    const item = nextQuestion(items, asked);
-    if (!item) return;
-    showing = true;
-    asked.add(`${item.kind}:${item.id}`);
-    try {
-      const archive = await api.ui.confirm(dialogFor(item));
-      api.send({ type: 'stale-archive-answer', kind: item.kind, id: item.id, archive });
-    } finally {
-      showing = false;
+  function raise(item) {
+    const key = keyOf(item);
+    const token = {};
+    shown.set(key, token);
+    api.ui.notify(cardFor(item)).then((answer) => {
+      if (shown.get(key) !== token) return;
+      shown.delete(key);
+      if (answer === 'archive' || answer === 'keep') {
+        api.send({ type: 'stale-archive-answer', kind: item.kind, id: item.id, archive: answer === 'archive' });
+      }
+      // Answered or closed, it stays down: an answer drops it from the next
+      // list, and a close hides it until reload.
+      closed.add(key);
+      sync();
+    });
+  }
+
+  function sync() {
+    const open = new Set(items.map(keyOf));
+    for (const key of [...shown.keys()]) {
+      if (open.has(key)) continue;
+      shown.delete(key);
+      api.ui.withdraw(key);
     }
-    maybeAsk();
+    for (const item of items) {
+      if (shown.size >= MAX_VISIBLE) break;
+      const key = keyOf(item);
+      if (!shown.has(key) && !closed.has(key)) raise(item);
+    }
   }
 
   return {
     onItems(next) {
       items = Array.isArray(next) ? next : [];
-      // Forget what this tab asked once the server has too, so a Keep that
-      // comes round again after another threshold is asked again.
-      const open = new Set(items.map((it) => `${it.kind}:${it.id}`));
-      for (const key of asked) if (!open.has(key)) asked.delete(key);
-      maybeAsk();
+      // An answered item the server has dropped can be raised again if it ever
+      // comes back (a Keep after another full threshold). A closed one that is
+      // still open stays hidden until reload.
+      const open = new Set(items.map(keyOf));
+      for (const key of closed) if (!open.has(key)) closed.delete(key);
+      sync();
     },
-    maybeAsk,
   };
 }
 
@@ -56,9 +77,8 @@ export default {
   register(slots) {
     // No slot: the registrar's own api and onMessage are all this needs.
     const api = slots.api;
-    const prompter = createPrompter({ api });
-    slots.onMessage((frame) => prompter.onItems(frame.items));
-    document.addEventListener('visibilitychange', () => prompter.maybeAsk());
+    const notifier = createNotifier({ api });
+    slots.onMessage((frame) => notifier.onItems(frame.items));
     // Ask for the list now rather than waiting up to a minute for the sweep.
     api.send({ type: 'stale-archive-hello' });
   },

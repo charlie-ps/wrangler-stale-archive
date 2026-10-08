@@ -1,52 +1,64 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPrompter, dialogFor } from './index.js';
+import { createNotifier, cardFor, MAX_VISIBLE } from './index.js';
 
 const tick = () => new Promise((r) => setImmediate(r));
 
-function setup(answers) {
+// A stand-in for the board's stack: each raised card waits for answer(id, x).
+function setup() {
   const sent = [];
-  const shown = [];
+  const cards = new Map();
+  const withdrawn = [];
   const api = {
     send: (f) => sent.push(f),
-    ui: { confirm: async (o) => { shown.push(o.title); return answers.shift(); } },
+    ui: {
+      notify: (c) => new Promise((resolve) => cards.set(c.id, { card: c, resolve })),
+      withdraw: (id) => { withdrawn.push(id); cards.get(id)?.resolve(null); cards.delete(id); },
+    },
   };
-  const doc = { visibilityState: 'visible' };
-  return { sent, shown, doc, p: createPrompter({ api, doc }) };
+  const answer = async (id, x) => { const c = cards.get(id); cards.delete(id); c.resolve(x); await tick(); };
+  return { sent, cards, withdrawn, answer, n: createNotifier({ api }) };
 }
 
-const items = [
-  { kind: 'task', id: 't1', label: 'T', reason: 'r' },
-  { kind: 'session', id: 's1', label: 'S', reason: 'r' },
-];
+const item = (kind, id) => ({ kind, id, label: id.toUpperCase(), reason: `${id} is old` });
 
-test('asks one question at a time and sends each answer', async () => {
-  const { sent, shown, p } = setup([true, false]);
-  p.onItems(items);
-  p.onItems(items);
-  await tick(); await tick();
-  assert.deepEqual(shown, ['Archive this task?', 'Archive this session?']);
-  assert.deepEqual(sent, [
-    { type: 'stale-archive-answer', kind: 'task', id: 't1', archive: true },
-    { type: 'stale-archive-answer', kind: 'session', id: 's1', archive: false },
-  ]);
+test('raises up to MAX_VISIBLE cards at once and the next as one is answered', async () => {
+  const { cards, answer, sent, n } = setup();
+  const items = ['a', 'b', 'c', 'd'].map((id) => item('session', id));
+  n.onItems(items);
+  n.onItems(items);
+  assert.deepEqual([...cards.keys()], ['session:a', 'session:b', 'session:c']);
+  assert.equal(MAX_VISIBLE, 3);
+  await answer('session:b', 'archive');
+  assert.deepEqual(sent, [{ type: 'stale-archive-answer', kind: 'session', id: 'b', archive: true }]);
+  assert.deepEqual([...cards.keys()], ['session:a', 'session:c', 'session:d']);
 });
 
-test('waits while the tab is hidden', async () => {
-  const { shown, doc, p } = setup([false]);
-  doc.visibilityState = 'hidden';
-  p.onItems(items.slice(0, 1));
-  await tick();
-  assert.deepEqual(shown, []);
-  doc.visibilityState = 'visible';
-  p.maybeAsk();
-  await tick();
-  assert.equal(shown.length, 1);
+test('Keep sends a non-archive answer; × sends nothing and stays hidden while still open', async () => {
+  const { cards, answer, sent, n } = setup();
+  const items = [item('task', 't'), item('session', 's')];
+  n.onItems(items);
+  await answer('task:t', 'keep');
+  await answer('session:s', null);
+  assert.deepEqual(sent, [{ type: 'stale-archive-answer', kind: 'task', id: 't', archive: false }]);
+  n.onItems(items);
+  assert.equal(cards.size, 0);
 });
 
-test('the dialog names the item and gives the reason', () => {
-  const d = dialogFor({ kind: 'session', label: 'Fix bug', reason: 'Quiet for 5 days.' });
-  assert.equal(d.okLabel, 'Archive session');
-  assert.equal(d.cancelLabel, 'Keep');
-  assert.match(d.body, /Fix bug[\s\S]*Quiet for 5 days\./);
+test('a card whose item leaves the list is withdrawn without an answer', async () => {
+  const { cards, withdrawn, sent, n } = setup();
+  n.onItems([item('task', 't')]);
+  n.onItems([]);
+  await tick();
+  assert.deepEqual(withdrawn, ['task:t']);
+  assert.equal(cards.size, 0);
+  assert.deepEqual(sent, []);
+});
+
+test('the card names the item and gives the reason', () => {
+  const c = cardFor({ kind: 'task', id: 't1', label: 'Billing', reason: 'Quiet for 16 days.' });
+  assert.equal(c.id, 'task:t1');
+  assert.equal(c.title, 'Archive “Billing”?');
+  assert.equal(c.body, 'Quiet for 16 days.');
+  assert.deepEqual(c.actions.map((a) => a.label), ['Keep', 'Archive task']);
 });

@@ -52,7 +52,7 @@ export default {
   id: 'stale-archive',
   label: 'Stale archive prompts',
   description: 'Asks whether to archive a task nobody has started a session in for a while, or a session that has gone quiet, and says why.',
-  help: 'A task is stale when no session has been started in it for the task threshold; a session is stale when its transcript has had no activity for the session threshold (nested sessions count towards their top-level card, and working or snoozed ones are skipped). Each one gets its own popup: Archive archives it, Keep (or Escape) asks again only after another full threshold.',
+  help: 'A task is stale when no session has been started in it for the task threshold; a session is stale when its transcript has had no activity for the session threshold (nested sessions count towards their top-level card, and working or snoozed ones are skipped). Each one gets a notification in the bottom-right stack: Archive archives it, Keep asks again only after another full threshold, and × hides it until the board is reloaded.',
   author: 'Charlie Goldstraw',
   homepage: 'https://github.com/charlie-ps/wrangler-stale-archive',
   defaultEnabled: true,
