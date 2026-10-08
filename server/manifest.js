@@ -58,7 +58,7 @@ export default {
   defaultEnabled: true,
   dir,
   requires: ['sessions:read', 'sessions:archive', 'tasks:read', 'tasks:archive', 'board:broadcast'],
-  engines: { wranglerApi: '^1.23.0' },
+  engines: { wranglerApi: '^1.24.0' },
 
   settings: [
     {
