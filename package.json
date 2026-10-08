@@ -1,0 +1,32 @@
+{
+  "name": "wrangler-stale-archive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Asks whether to archive stale tasks and sessions in Agent Wrangler, as an installable extension",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "node --test 'server/*.test.js' 'public/*.test.js'"
+  },
+  "wranglerExtension": {
+    "id": "stale-archive",
+    "label": "Stale archive prompts",
+    "description": "Asks whether to archive a task nobody has started a session in for a while, or a session that has gone quiet, and says why.",
+    "author": "Charlie Goldstraw",
+    "requires": [
+      "sessions:read",
+      "sessions:archive",
+      "tasks:read",
+      "tasks:archive",
+      "board:broadcast"
+    ],
+    "homepage": "https://github.com/charlie-ps/wrangler-stale-archive"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charlie-ps/wrangler-stale-archive.git"
+  }
+}
