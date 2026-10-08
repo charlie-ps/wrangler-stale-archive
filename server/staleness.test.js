@@ -17,6 +17,18 @@ test('a session quiet past the threshold is asked about, with a reason', () => {
   assert.match(out[0].reason, /for 5 days/);
 });
 
+test('a session in a task carries the task name; one outside a task does not', () => {
+  const out = run({
+    sessions: [
+      { sessionId: 'in', lastActivity: ago(5), status: 'idle' },
+      { sessionId: 'out', lastActivity: ago(5), status: 'idle' },
+    ],
+    tasks: { tasks: [{ id: 't1', name: 'Billing' }], assignments: { in: 't1' } },
+  }, { createdAtOf: () => NOW });
+  const byId = Object.fromEntries(out.filter((o) => o.kind === 'session').map((o) => [o.id, o.task]));
+  assert.deepEqual(byId, { in: 'Billing', out: null });
+});
+
 test('working, background-shell and snoozed sessions are skipped', () => {
   const out = run({ sessions: [
     { sessionId: 'w', lastActivity: ago(9), status: 'working' },

@@ -55,6 +55,7 @@ export function findStale({ graph, now, taskDays, sessionDays, createdAtOf = () 
   const sessions = Array.isArray(graph?.sessions) ? graph.sessions : [];
   const snapshot = graph?.tasks || {};
   const assignments = snapshot.assignments || {};
+  const taskNames = new Map((snapshot.tasks || []).map((t) => [t.id, t.name || 'Untitled task']));
 
   for (const task of snapshot.tasks || []) {
     if (task.archivedAt) continue;
@@ -81,6 +82,7 @@ export function findStale({ graph, now, taskDays, sessionDays, createdAtOf = () 
       kind: 'session',
       id: s.sessionId,
       label: s.label || 'Untitled session',
+      task: taskNames.get(assignments[s.sessionId]) || null,
       reason: `Nothing has happened in this session for ${plural(days(now - active), 'day')} (last activity on ${shortDate(active)}).`,
     });
   }

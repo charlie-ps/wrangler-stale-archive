@@ -13,7 +13,7 @@ export function cardFor(item) {
   const what = item.kind === 'task' ? 'task' : 'session';
   return {
     id: keyOf(item),
-    title: `Archive “${item.label}”?`,
+    title: item.task ? `Archive “${item.label}” in “${item.task}”?` : `Archive “${item.label}”?`,
     body: item.reason,
     actions: [
       { id: 'keep', label: 'Keep' },

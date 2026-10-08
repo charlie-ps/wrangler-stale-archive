@@ -62,3 +62,9 @@ test('the card names the item and gives the reason', () => {
   assert.equal(c.body, 'Quiet for 16 days.');
   assert.deepEqual(c.actions.map((a) => a.label), ['Keep', 'Archive task']);
 });
+
+test('a session card names its task', () => {
+  const c = cardFor({ kind: 'session', id: 's1', label: 'Fix login', task: 'Billing', reason: 'Quiet.' });
+  assert.equal(c.title, 'Archive “Fix login” in “Billing”?');
+  assert.equal(cardFor({ kind: 'session', id: 's2', label: 'Loose', task: null, reason: '' }).title, 'Archive “Loose”?');
+});
